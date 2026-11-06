@@ -1,0 +1,1 @@
+{"build":{"customer":{"distribution":"internal","env":{"EXPO_PUBLIC_APP_ROLE":"customer"},"android":{"buildType":"apk"}},"partner":{"distribution":"internal","env":{"EXPO_PUBLIC_APP_ROLE":"partner"},"android":{"buildType":"apk"}}}}
