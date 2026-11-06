@@ -6,7 +6,7 @@ const config = {
     version: "0.1.0",
     orientation: "portrait",
     userInterfaceStyle: "light",
-    icon: partner ? "./assets/partner-icon.png" : "./assets/customer-icon.png",
+    icon: "./assets/miledesk-icon.png",
     scheme: partner ? "miledesk-partner" : "miledesk",
     ios: {
       bundleIdentifier: partner
@@ -17,10 +17,8 @@ const config = {
     android: {
       package: partner ? "app.miledesk.partner" : "app.miledesk.customer",
       adaptiveIcon: {
-        foregroundImage: partner
-          ? "./assets/partner-foreground.png"
-          : "./assets/customer-foreground.png",
-        backgroundColor: partner ? "#F5F6F0" : "#285B43",
+        foregroundImage: "./assets/miledesk-foreground.png",
+        backgroundColor: "#234C3C",
       },
     },
     plugins: ["expo-secure-store"],

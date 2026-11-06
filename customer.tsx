@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   RefreshControl,
   ScrollView,
   StatusBar,
@@ -17,17 +18,7 @@ import {
   request,
   saveCustomerToken,
 } from "./api";
-
-const color = {
-  paper: "#F5F6F0",
-  surface: "#FFFFFF",
-  ink: "#203D30",
-  muted: "#65756B",
-  green: "#285B43",
-  sage: "#E6EEDF",
-  line: "#DDE4D9",
-  sand: "#F3E8D6",
-};
+import { color } from "./theme";
 const stages = ["Assigned", "Picked up", "On the way", "Delivered"];
 function Action({
   label,
@@ -194,9 +185,11 @@ export default function CustomerApp() {
       <View style={{ height: StatusBar.currentHeight ?? 42 }} />
       <View style={styles.header}>
         <View style={styles.brandRow}>
-          <View style={styles.mark}>
-            <Text style={styles.markText}>m</Text>
-          </View>
+          <Image
+            source={require("./assets/miledesk-mark.png")}
+            style={styles.mark}
+            accessibilityLabel="MileDesk"
+          />
           <Text style={styles.brand}>MileDesk</Text>
         </View>
         <Text style={styles.city}>Salem</Text>
@@ -417,12 +410,7 @@ const styles = StyleSheet.create({
   mark: {
     width: 32,
     height: 32,
-    borderRadius: 9,
-    backgroundColor: color.green,
-    alignItems: "center",
-    justifyContent: "center",
   },
-  markText: { color: color.surface, fontSize: 24, fontWeight: "700" },
   brand: { color: color.ink, fontSize: 20, fontWeight: "700" },
   city: { color: color.muted, fontSize: 13 },
   content: {

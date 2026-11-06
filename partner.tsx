@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Linking,
   Pressable,
   RefreshControl,
@@ -13,18 +14,7 @@ import {
 } from "react-native";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { Account, Delivery, readToken, request, saveToken } from "./api";
-
-const color = {
-  paper: "#F5F6F0",
-  surface: "#FFFFFF",
-  ink: "#203D30",
-  muted: "#65756B",
-  green: "#285B43",
-  sage: "#E6EEDF",
-  line: "#DDE4D9",
-  sand: "#F3E8D6",
-  danger: "#963F30",
-};
+import { color } from "./theme";
 const next: Partial<
   Record<Delivery["status"], { label: string; status: Delivery["status"] }>
 > = {
@@ -254,9 +244,11 @@ export default function PartnerApp() {
       <View style={{ height: StatusBar.currentHeight ?? 42 }} />
       <View style={styles.header}>
         <View style={styles.brandRow}>
-          <View style={styles.mark}>
-            <Text style={styles.markText}>m</Text>
-          </View>
+          <Image
+            source={require("./assets/miledesk-mark.png")}
+            style={styles.mark}
+            accessibilityLabel="MileDesk"
+          />
           <Text style={styles.brand}>MileDesk Partner</Text>
         </View>
         <Text style={styles.city}>Salem</Text>
@@ -502,12 +494,7 @@ const styles = StyleSheet.create({
   mark: {
     width: 32,
     height: 32,
-    borderRadius: 9,
-    backgroundColor: color.green,
-    alignItems: "center",
-    justifyContent: "center",
   },
-  markText: { color: color.surface, fontSize: 24, fontWeight: "700" },
   brand: { color: color.ink, fontSize: 18, fontWeight: "700" },
   city: { color: color.muted, fontSize: 13 },
   content: {

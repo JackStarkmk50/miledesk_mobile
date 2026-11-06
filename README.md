@@ -14,7 +14,7 @@ npm start
 
 Stop Metro before switching `EXPO_PUBLIC_APP_ROLE` to `customer`. Expo inlines `EXPO_PUBLIC_API_URL` into the app bundle; it is a server address, never a secret. Use HTTPS for hosted builds.
 
-Run `npm run icons` after changing the brand mark or palette. The generated customer and partner icons are committed with the app.
+Run `npm run icons` after changing the brand mark or palette. Both apps use the same MileDesk mark as the web app.
 
 ## Partner flow
 
