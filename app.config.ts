@@ -21,7 +21,7 @@ const config = {
         backgroundColor: "#234C3C",
       },
     },
-    plugins: ["expo-secure-store"],
+    plugins: ["expo-secure-store", "expo-sqlite"],
   },
 };
 

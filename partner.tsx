@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Linking,
   Pressable,
   RefreshControl,
   ScrollView,
+  Platform,
   StatusBar,
   StyleSheet,
   Text,
@@ -13,7 +15,16 @@ import {
   View,
 } from "react-native";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
-import { Account, Delivery, readToken, request, saveToken } from "./api";
+import {
+  Account,
+  ApiError,
+  Delivery,
+  NetworkError,
+  readToken,
+  request,
+  saveToken,
+} from "./api";
+import { PendingUpdate, readPending, savePending } from "./pending";
 import { color } from "./theme";
 const next: Partial<
   Record<Delivery["status"], { label: string; status: Delivery["status"] }>
@@ -65,6 +76,7 @@ export default function PartnerApp() {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [message, setMessage] = useState("");
+  const [pending, setPending] = useState<PendingUpdate[]>([]);
   const order = deliveries.find((item) => item.id === selected);
   const active = deliveries.filter(
     (item) => !["Delivered", "Failed"].includes(item.status),
@@ -79,8 +91,55 @@ export default function PartnerApp() {
         current,
       ),
     ]);
+    const waiting = await readPending(session.account.id);
+    const remaining: PendingUpdate[] = [];
+    let conflict = false;
+    for (const update of waiting) {
+      const currentDelivery = queue.deliveries.find(
+        (item) => item.id === update.deliveryId,
+      );
+      if (
+        currentDelivery?.version === update.baseVersion + 1 &&
+        currentDelivery.status === update.status
+      )
+        continue;
+      if (
+        currentDelivery?.version !== update.baseVersion ||
+        currentDelivery.status !== update.baseStatus
+      ) {
+        remaining.push(update);
+        conflict = true;
+        continue;
+      }
+      try {
+        const result = await request<{ delivery: Delivery }>(
+          `/api/mobile/deliveries/${update.deliveryId}`,
+          "PATCH",
+          current,
+          {
+            version: update.baseVersion,
+            status: update.status,
+            reason: update.reason,
+          },
+        );
+        queue.deliveries = queue.deliveries.map((item) =>
+          item.id === update.deliveryId ? result.delivery : item,
+        );
+      } catch (error) {
+        remaining.push(update);
+        if (!(error instanceof NetworkError)) conflict = true;
+      }
+    }
+    await savePending(session.account.id, remaining);
+    setPending(remaining);
     setAccount(session.account);
     setDeliveries(queue.deliveries);
+    if (conflict)
+      setMessage(
+        "A pending update needs review. Ask your dispatcher to check this stop.",
+      );
+    else if (waiting.length && !remaining.length)
+      setMessage("Pending updates synced with MileDesk.");
   }, []);
   useEffect(() => {
     let active = true;
@@ -88,23 +147,19 @@ export default function PartnerApp() {
       .then(async (stored) => {
         if (!stored) return;
         try {
-          const [session, queue] = await Promise.all([
-            request<{ account: Account }>("/api/mobile/session", "GET", stored),
-            request<{ deliveries: Delivery[] }>(
-              "/api/mobile/deliveries",
-              "GET",
-              stored,
-            ),
-          ]);
+          if (active) setToken(stored);
+          await refresh(stored);
           if (active) {
             setToken(stored);
-            setAccount(session.account);
-            setDeliveries(queue.deliveries);
           }
         } catch (error) {
-          if ((error as Error).message === "Sign in required.")
+          if (error instanceof ApiError && error.status === 401)
             await saveToken(null);
-          if (active) setMessage((error as Error).message);
+          if (active) {
+            if (error instanceof ApiError && error.status === 401)
+              setToken(null);
+            setMessage((error as Error).message);
+          }
         }
       })
       .catch((error) => {
@@ -116,7 +171,7 @@ export default function PartnerApp() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [refresh]);
   async function signIn() {
     setBusy(true);
     setMessage("");
@@ -128,8 +183,8 @@ export default function PartnerApp() {
         { email: email.trim(), password },
       );
       await saveToken(result.token);
-      await refresh(result.token);
       setToken(result.token);
+      await refresh(result.token);
       setPassword("");
     } catch (error) {
       setMessage((error as Error).message);
@@ -144,6 +199,7 @@ export default function PartnerApp() {
     setToken(null);
     setAccount(null);
     setDeliveries([]);
+    setPending([]);
     setSelected(null);
     setMessage("Signed out.");
   }
@@ -160,23 +216,41 @@ export default function PartnerApp() {
     }
   }
   async function update(status: Delivery["status"]) {
-    if (!token || !order) return;
+    if (
+      !token ||
+      !order ||
+      !account ||
+      pending.some((item) => item.deliveryId === order.id)
+    )
+      return;
     setBusy(true);
     setMessage("");
+    const update: PendingUpdate = {
+      deliveryId: order.id,
+      baseVersion: order.version,
+      baseStatus: order.status,
+      status,
+      reason: status === "Failed" ? reason.trim() : "",
+    };
     try {
+      const waiting = [...pending, update];
+      await savePending(account.id, waiting);
+      setPending(waiting);
       const result = await request<{ delivery: Delivery }>(
         `/api/mobile/deliveries/${order.id}`,
         "PATCH",
         token,
         {
-          version: order.version,
-          status,
-          reason: status === "Failed" ? reason.trim() : "",
+          version: update.baseVersion,
+          status: update.status,
+          reason: update.reason,
         },
       );
       setDeliveries((items) =>
         items.map((item) => (item.id === order.id ? result.delivery : item)),
       );
+      await savePending(account.id, pending);
+      setPending(pending);
       setIssue(false);
       setReason("");
       setMessage(
@@ -185,11 +259,52 @@ export default function PartnerApp() {
           : `Marked ${status.toLowerCase()}.`,
       );
     } catch (error) {
-      await refresh(token).catch(() => null);
-      setMessage((error as Error).message);
+      if (error instanceof NetworkError)
+        setMessage(
+          "Connection lost. This update is pending; tap Retry sync when online.",
+        );
+      else {
+        await savePending(account.id, pending);
+        setPending(pending);
+        await refresh(token).catch(() => null);
+        setMessage((error as Error).message);
+      }
     } finally {
       setBusy(false);
     }
+  }
+  function discardPending(deliveryId: string) {
+    if (!account) return;
+    const discard = async () => {
+      const remaining = pending.filter(
+        (item) => item.deliveryId !== deliveryId,
+      );
+      try {
+        await savePending(account.id, remaining);
+        setPending(remaining);
+        setMessage(
+          "Pending update discarded. Refresh this stop before changing its status.",
+        );
+      } catch (error) {
+        setMessage((error as Error).message);
+      }
+    };
+    if (Platform.OS === "web") {
+      if (globalThis.confirm("Discard this unconfirmed update?"))
+        void discard();
+    } else
+      Alert.alert(
+        "Discard pending update?",
+        "This status change may not have reached MileDesk. Check with your dispatcher first.",
+        [
+          { text: "Keep update", style: "cancel" },
+          {
+            text: "Discard",
+            style: "destructive",
+            onPress: () => void discard(),
+          },
+        ],
+      );
   }
   async function openMaps() {
     if (!order) return;
@@ -232,6 +347,9 @@ export default function PartnerApp() {
         </View>
         <Text style={styles.cardTitle}>{item.customer}</Text>
         <Text style={styles.body}>{item.address}</Text>
+        {pending.some((update) => update.deliveryId === item.id) && (
+          <Text style={styles.status}>Pending sync</Text>
+        )}
         <Text style={styles.noteText}>
           {item.landmark || "No entrance note"}
         </Text>
@@ -309,6 +427,37 @@ export default function PartnerApp() {
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
           >
+            {!!pending.length && (
+              <View style={styles.banner}>
+                <Text style={styles.bannerTitle}>
+                  {pending.length} update{pending.length === 1 ? "" : "s"}{" "}
+                  pending
+                </Text>
+                <Text style={styles.body}>
+                  MileDesk has not confirmed these changes. Retry when
+                  connected.
+                </Text>
+                <Action
+                  label="Retry sync"
+                  secondary
+                  disabled={refreshing}
+                  onPress={reload}
+                />
+              </View>
+            )}
+            {!account && (
+              <View style={styles.banner}>
+                <Text style={styles.body}>
+                  Connect to load your assigned stops.
+                </Text>
+                <Action
+                  label="Retry connection"
+                  secondary
+                  disabled={refreshing}
+                  onPress={reload}
+                />
+              </View>
+            )}
             {order ? (
               <>
                 <Pressable
@@ -329,6 +478,18 @@ export default function PartnerApp() {
                 <View style={styles.banner}>
                   <Text style={styles.bannerLabel}>Current status</Text>
                   <Text style={styles.bannerTitle}>{order.status}</Text>
+                  {pending.some((update) => update.deliveryId === order.id) && (
+                    <Text style={styles.body}>
+                      Status update pending. MileDesk has not confirmed it.
+                    </Text>
+                  )}
+                  {pending.some((update) => update.deliveryId === order.id) && (
+                    <Action
+                      label="Discard pending update"
+                      secondary
+                      onPress={() => discardPending(order.id)}
+                    />
+                  )}
                   {order.status === "Failed" && (
                     <Text style={styles.body}>{order.failure_reason}</Text>
                   )}
@@ -357,13 +518,19 @@ export default function PartnerApp() {
                     <Text style={styles.heading}>Next step</Text>
                     <Action
                       label={next[order.status]!.label}
-                      disabled={busy}
+                      disabled={
+                        busy ||
+                        pending.some((update) => update.deliveryId === order.id)
+                      }
                       onPress={() => update(next[order.status]!.status)}
                     />
                     <Action
                       label="Report a delivery issue"
                       secondary
-                      disabled={busy}
+                      disabled={
+                        busy ||
+                        pending.some((update) => update.deliveryId === order.id)
+                      }
                       onPress={() => setIssue(true)}
                     />
                     {issue && (
@@ -403,8 +570,8 @@ export default function PartnerApp() {
                   <Text style={styles.body}>{account?.email}</Text>
                 </View>
                 <Text style={styles.caption}>
-                  Stops load while you are online. Status changes need a
-                  connection and confirmation from MileDesk.
+                  Stops load while you are online. Updates made during a
+                  connection loss stay pending until MileDesk confirms them.
                 </Text>
                 <Action label="Sign out" secondary onPress={signOut} />
               </>

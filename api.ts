@@ -39,6 +39,15 @@ const key = "miledesk-partner-session";
 const customerKey = "miledesk-customer-link";
 const base = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "");
 let browserToken: string | null = null;
+export class NetworkError extends Error {}
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+  }
+}
 
 export function configured() {
   return !!base && /^https?:\/\//.test(base);
@@ -87,12 +96,15 @@ export async function request<T>(
       body: body ? JSON.stringify(body) : undefined,
     });
   } catch {
-    throw new Error(
+    throw new NetworkError(
       "Cannot reach MileDesk. Check your connection and server address.",
     );
   }
   const result = await response.json().catch(() => ({}));
   if (!response.ok)
-    throw new Error(result.error || "Request failed. Try again.");
+    throw new ApiError(
+      result.error || "Request failed. Try again.",
+      response.status,
+    );
   return result as T;
 }

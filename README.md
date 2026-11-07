@@ -18,7 +18,7 @@ Run `npm run icons` after changing the brand mark or palette. Both apps use the 
 
 ## Partner flow
 
-The business owner invites a driver from `/team` in the web app. The driver joins with a name and password, then signs in to MileDesk Partner. The app shows only deliveries assigned to that driver account. It can open the address in Maps, call the customer, record pickup, transit and delivery, or report a failed attempt with a reason. Changes require a network connection. Session tokens are stored with Expo SecureStore on native devices. Removing a driver or resetting their password ends their mobile sessions.
+The business owner invites a driver from `/team` in the web app. The driver joins with a name and password, verifies their email, then signs in to MileDesk Partner. The app shows only deliveries assigned to that driver account. It can open the address in Maps, call the customer, record pickup, transit and delivery, or report a failed attempt with a reason. If the connection drops during a status change, the app keeps the pending intent in Expo SQLite and retries it only when the delivery still has the expected version and status. The driver sees pending changes and can review or discard one. Session tokens are stored with Expo SecureStore on native devices. Removing a driver or resetting their password ends their mobile sessions.
 
 ## Customer flow
 
@@ -26,4 +26,4 @@ The dispatcher creates a private tracking link from a delivery in `/live` and sh
 
 ## Limits
 
-No live GPS, ETA, route optimization, push notifications, delivery proof, offline update queue, customer ordering, or payments are connected. The customer link is a bearer credential; share it only with its recipient. Real device navigation, calling, network loss and release builds still need testing. `eas.json` contains internal Android APK profiles for both roles. EAS builds require an Expo account, project setup and `EXPO_PUBLIC_API_URL` for the target environment.
+No live GPS, ETA, route optimization, push notifications, delivery proof, customer ordering, or payments are connected. Assigned stops require an online connection; pending changes are not server-confirmed until sync succeeds. The customer link is a bearer credential; share it only with its recipient. Real device navigation, calling, network loss and release builds still need testing. `eas.json` contains internal Android APK profiles for both roles. EAS builds require an Expo account, project setup and `EXPO_PUBLIC_API_URL` for the target environment.
