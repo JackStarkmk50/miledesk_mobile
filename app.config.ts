@@ -21,7 +21,27 @@ const config = {
         backgroundColor: "#234C3C",
       },
     },
-    plugins: ["expo-secure-store", "expo-sqlite"],
+    plugins: [
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-location",
+        {
+          locationWhenInUsePermission:
+            "Allow MileDesk to share your delivery location when you choose to.",
+        },
+      ],
+      ...(partner
+        ? [
+            [
+              "expo-image-picker",
+              {
+                photosPermission: "Allow MileDesk to select a delivery photo.",
+              },
+            ],
+          ]
+        : []),
+    ],
   },
 };
 

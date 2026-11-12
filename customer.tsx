@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
+import * as Location from "expo-location";
 import {
   TrackingDelivery,
   readCustomerToken,
@@ -74,10 +75,45 @@ export default function CustomerApp() {
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [pin, setPin] = useState<{
+    latitude: number;
+    longitude: number;
+    accuracy_m: number;
+  } | null>(null);
   function show(item: TrackingDelivery) {
     setDelivery(item);
     setAddress(item.address);
     setLandmark(item.landmark);
+    setPin(null);
+  }
+  async function locate() {
+    setBusy(true);
+    setMessage("");
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted)
+        throw new Error("Location permission was not granted.");
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      const accuracy_m = position.coords.accuracy ?? 0;
+      if (accuracy_m <= 0 || accuracy_m > 1000)
+        throw new Error(
+          "Location is too imprecise. Try again near the entrance.",
+        );
+      setPin({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy_m,
+      });
+      setMessage(
+        `Location ready (about ${Math.round(accuracy_m)} m accuracy). Send it with the address below.`,
+      );
+    } catch (error) {
+      setMessage((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
   useEffect(() => {
     let active = true;
@@ -159,6 +195,7 @@ export default function CustomerApp() {
           version: delivery.version,
           address: address.trim(),
           landmark: landmark.trim(),
+          ...(pin ?? {}),
         },
       );
       show(result.delivery);
@@ -287,6 +324,18 @@ export default function CustomerApp() {
                       multiline
                       accessibilityLabel="Landmark or entrance note"
                     />
+                    <Action
+                      label={
+                        pin ? "Update location pin" : "Use my current location"
+                      }
+                      secondary
+                      disabled={busy}
+                      onPress={locate}
+                    />
+                    <Text style={styles.body}>
+                      Optional. Share your location only while you are at the
+                      delivery entrance. The dispatcher will review it.
+                    </Text>
                     <Action
                       label={busy ? "Sending…" : "Send address correction"}
                       disabled={busy || address.trim().length < 5}

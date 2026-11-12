@@ -15,6 +15,8 @@ import {
   View,
 } from "react-native";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
+import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
 import {
   Account,
   ApiError,
@@ -23,6 +25,7 @@ import {
   readToken,
   request,
   saveToken,
+  uploadProof,
 } from "./api";
 import { PendingUpdate, readPending, savePending } from "./pending";
 import { color } from "./theme";
@@ -309,11 +312,47 @@ export default function PartnerApp() {
   async function openMaps() {
     if (!order) return;
     try {
+      const destination =
+        order.location_latitude !== null && order.location_longitude !== null
+          ? `${order.location_latitude},${order.location_longitude}`
+          : order.address;
       await Linking.openURL(
-        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.address)}`,
+        `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`,
       );
     } catch {
       setMessage("Maps could not open. Use the address shown here.");
+    }
+  }
+  async function addProof() {
+    if (!token || !order || order.status !== "Delivered") return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.7,
+        exif: false,
+      });
+      if (picked.canceled) return;
+      const asset = picked.assets[0];
+      const image = await ImageManipulator.manipulateAsync(
+        asset.uri,
+        [{ resize: { width: Math.min(asset.width, 1200) } }],
+        { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG },
+      );
+      await uploadProof(order.id, token, image.uri);
+      setDeliveries((items) =>
+        items.map((item) =>
+          item.id === order.id ? { ...item, has_proof: true } : item,
+        ),
+      );
+      setMessage(
+        "Delivery photo saved for the dispatcher. It is removed after 30 days.",
+      );
+    } catch (error) {
+      setMessage((error as Error).message);
+    } finally {
+      setBusy(false);
     }
   }
   async function callCustomer() {
@@ -497,6 +536,13 @@ export default function PartnerApp() {
                 <View style={styles.section}>
                   <Text style={styles.heading}>Find the entrance</Text>
                   <Text style={styles.address}>{order.address}</Text>
+                  {order.location_latitude !== null && (
+                    <Text style={styles.body}>
+                      Customer location pin shared · accuracy about{" "}
+                      {Math.round(order.location_accuracy_m ?? 0)} m. Confirm
+                      the entrance note.
+                    </Text>
+                  )}
                   <View style={styles.note}>
                     <Text style={styles.label}>Landmark or access note</Text>
                     <Text style={styles.body}>
@@ -555,6 +601,23 @@ export default function PartnerApp() {
                           onPress={() => setIssue(false)}
                         />
                       </View>
+                    )}
+                  </View>
+                )}
+                {order.status === "Delivered" && (
+                  <View style={styles.section}>
+                    <Text style={styles.heading}>Delivery photo</Text>
+                    <Text style={styles.body}>
+                      {order.has_proof
+                        ? "Photo saved privately for the dispatcher."
+                        : "Optional. Add a photo of the completed handoff, without people or documents."}
+                    </Text>
+                    {!order.has_proof && (
+                      <Action
+                        label={busy ? "Saving photo…" : "Choose delivery photo"}
+                        disabled={busy}
+                        onPress={addProof}
+                      />
                     )}
                   </View>
                 )}

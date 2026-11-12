@@ -25,6 +25,10 @@ export type Delivery = {
   version: number;
   created_at: string;
   failure_reason: string;
+  location_latitude: number | null;
+  location_longitude: number | null;
+  location_accuracy_m: number | null;
+  has_proof?: boolean;
 };
 export type TrackingDelivery = {
   id: string;
@@ -34,6 +38,9 @@ export type TrackingDelivery = {
   status: string;
   version: number;
   workspace: string;
+  location_latitude: number | null;
+  location_longitude: number | null;
+  location_accuracy_m: number | null;
 };
 const key = "miledesk-partner-session";
 const customerKey = "miledesk-customer-link";
@@ -107,4 +114,33 @@ export async function request<T>(
       response.status,
     );
   return result as T;
+}
+
+export async function uploadProof(id: string, token: string, uri: string) {
+  if (!configured())
+    throw new Error("Set EXPO_PUBLIC_API_URL to the MileDesk server address.");
+  const form = new FormData();
+  if (Platform.OS === "web")
+    form.append("photo", await (await fetch(uri)).blob(), "delivery.jpg");
+  else
+    form.append("photo", {
+      uri,
+      name: "delivery.jpg",
+      type: "image/jpeg",
+    } as unknown as Blob);
+  let response: Response;
+  try {
+    response = await fetch(`${base}/api/mobile/deliveries/${id}/proof`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+  } catch {
+    throw new NetworkError(
+      "Cannot reach MileDesk. Check your connection and try the photo again.",
+    );
+  }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok)
+    throw new ApiError(result.error || "Photo upload failed.", response.status);
 }
